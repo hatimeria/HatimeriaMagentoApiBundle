@@ -3,6 +3,7 @@
 namespace Hatimeria\MagentoApiBundle\Api;
 
 use \SoapClient;
+use \SoapFault;
 
 class Api
 {
@@ -78,14 +79,25 @@ class Api
         $this->session = $session;
     }
 
-    protected function callMethod($method, $params = null)
+    protected function callMethod($method, $params = null, $retry = 0)
     {
         $client = $this->getClient();
 
-        if (null !== $params) {
-            $result = $client->call($this->getSession(), $method, $params);
-        } else {
-            $result = $client->call($this->getSession(), $method);
+        try {
+            if (null !== $params) {
+                $result = $client->call($this->getSession(), $method, $params);
+            } else {
+                $result = $client->call($this->getSession(), $method);
+            }
+        } catch (SoapFault $e) {
+            // for now retry count is not configurable as well as ApiException codes
+            // these will be changed soonish
+            //@todo retry count configurable, configurable codes which can be retried
+            if ($retry < 1 && in_array($e->faultcode, array(ApiException::SESSION_EXPIRED))) {
+                return $this->callMethod($method, $params, ++$retry);
+            }
+
+            throw new ApiException($e->faultstring, $e->faultcode, $e);
         }
 
         return $result;
